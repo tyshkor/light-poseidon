@@ -227,6 +227,8 @@ pub trait PoseidonHasher<F: PrimeField> {
     ///
     /// // Do something with `hash`.
     fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError>;
+
+    fn hash_vec(&mut self, inputs: &[F]) -> Result<Vec<F>, PoseidonError>;
 }
 
 pub trait PoseidonBytesHasher {
@@ -410,6 +412,49 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
         let result = self.state[0];
         self.state.clear();
         Ok(result)
+    }
+
+
+    fn hash_vec(&mut self, inputs: &[F]) -> Result<Vec<F>, PoseidonError> {
+        if inputs.len() != self.params.width - 1 {
+            return Err(PoseidonError::InvalidNumberOfInputs {
+                inputs: inputs.len(),
+                max_limit: self.params.width - 1,
+                width: self.params.width,
+            });
+        }
+
+        self.state.push(self.domain_tag);
+
+        for input in inputs {
+            self.state.push(*input);
+        }
+
+        let all_rounds = self.params.full_rounds + self.params.partial_rounds;
+        let half_rounds = self.params.full_rounds / 2;
+
+        // full rounds + partial rounds
+        for round in 0..half_rounds {
+            self.apply_ark(round);
+            self.apply_sbox_full();
+            self.apply_mds();
+        }
+
+        for round in half_rounds..half_rounds + self.params.partial_rounds {
+            self.apply_ark(round);
+            self.apply_sbox_partial();
+            self.apply_mds();
+        }
+
+        for round in half_rounds + self.params.partial_rounds..all_rounds {
+            self.apply_ark(round);
+            self.apply_sbox_full();
+            self.apply_mds();
+        }
+
+        let result = self.state[0];
+        // self.state.clear();
+        Ok(self.state.clone())
     }
 }
 
