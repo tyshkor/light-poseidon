@@ -149,6 +149,11 @@ pub enum PoseidonError {
         max_limit: usize,
         width: usize,
     },
+    #[error("Invalid number of outputs: {outputs}. Maximum allowed is {max_limit}.")]
+    InvalidNumberOfOutputs {
+        outputs: usize,
+        max_limit: usize,
+    },
     #[error("Input is an empty slice.")]
     EmptyInput,
     #[error("Invalid length of the input: {len}. The length matching the modulus of the prime field is: {modulus_bytes_len}.")]
@@ -228,7 +233,7 @@ pub trait PoseidonHasher<F: PrimeField> {
     /// // Do something with `hash`.
     fn hash(&mut self, inputs: &[F]) -> Result<F, PoseidonError>;
 
-    fn hash_vec(&mut self, inputs: &[F]) -> Result<Vec<F>, PoseidonError>;
+    fn hash_vec(&mut self, inputs: &[F], output_size: usize) -> Result<Vec<F>, PoseidonError>;
 }
 
 pub trait PoseidonBytesHasher {
@@ -415,7 +420,7 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
     }
 
 
-    fn hash_vec(&mut self, inputs: &[F]) -> Result<Vec<F>, PoseidonError> {
+    fn hash_vec(&mut self, inputs: &[F], output_size: usize) -> Result<Vec<F>, PoseidonError> {
         if inputs.len() != self.params.width - 1 {
             return Err(PoseidonError::InvalidNumberOfInputs {
                 inputs: inputs.len(),
@@ -452,7 +457,21 @@ impl<F: PrimeField> PoseidonHasher<F> for Poseidon<F> {
             self.apply_mds();
         }
 
-        let result = self.state[0];
+        if output_size > self.state.len() {
+            return Err(PoseidonError::InvalidNumberOfOutputs {
+                outputs: output_size,
+                max_limit: self.state.len(),
+            });
+        }
+
+        let mut result = Vec::new();
+
+        self.apply_mds();
+
+        for output_idx in 0..output_size {
+            result.push(self.state[output_idx]);
+        }
+
         // self.state.clear();
         Ok(self.state.clone())
     }
